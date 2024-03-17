@@ -91,11 +91,11 @@ void Ernie<T>::initialize()
 }
 
 template<typename T>
-Bert<T>::Bert(size_t                              max_batch_size,
+Ernie<T>::Ernie(size_t                              max_batch_size,
               size_t                              max_seq_len,
               size_t                              head_num,
               size_t                              size_per_head,
-              size_t                              inter_size,
+              size_t                              inter_size, // ffn层 yincangsize
               size_t                              num_layer,
               int                                 sm,
               float                               q_scaling,
@@ -132,7 +132,7 @@ Bert<T>::Bert(size_t                              max_batch_size,
 }
 
 template<typename T>
-Bert<T>::Bert(size_t           max_batch_size,
+Ernie<T>::Ernie(size_t           max_batch_size,
               size_t           max_seq_len,
               size_t           head_num,
               size_t           size_per_head,
@@ -148,7 +148,7 @@ Bert<T>::Bert(size_t           max_batch_size,
               bool             sparse,
               ActivationType   activation_type,
               LayerNormType    layernorm_type):
-    Bert(max_batch_size,
+    Ernie(max_batch_size,
          max_seq_len,
          head_num,
          size_per_head,
@@ -172,32 +172,30 @@ Bert<T>::Bert(size_t           max_batch_size,
 }
 
 template<typename T>
-Bert<T>::Bert(Bert<T> const& bert):
-    Bert(0,
+Ernie<T>::Ernie(Ernie<T> const& ernie):
+    Ernie(0,
          0,
-         bert.head_num_,
-         bert.size_per_head_,
-         bert.inter_size_,
-         bert.num_layer_,
-         bert.sm_,
-         bert.q_scaling_,
-         bert.stream_,
-         bert.cublas_wrapper_,
-         bert.allocator_,
-         bert.is_free_buffer_after_forward_,
-         bert.attention_type_,
-         bert.sparse_,
-         bert.activation_type_,
-         bert.layernorm_type_,
-         bert.tensor_para_,
-         bert.pipeline_para_,
-         bert.custom_all_reduce_comm_,
-         bert.enable_custom_all_reduce_)
-{
-}
+         ernie.head_num_,
+         ernie.size_per_head_,
+         ernie.inter_size_,
+         ernie.num_layer_,
+         ernie.sm_,
+         ernie.q_scaling_,
+         ernie.stream_,
+         ernie.cublas_wrapper_,
+         ernie.allocator_,
+         ernie.is_free_buffer_after_forward_,
+         ernie.attention_type_,
+         ernie.sparse_,
+         ernie.activation_type_,
+         ernie.layernorm_type_,
+         ernie.tensor_para_,
+         ernie.pipeline_para_,
+         ernie.custom_all_reduce_comm_,
+         ernie.enable_custom_all_reduce_) { }
 
 template<typename T>
-Bert<T>::~Bert()
+Ernie<T>::~Ernie()
 {
     if (fused_attention_layer_ != nullptr) {
         delete fused_attention_layer_;
@@ -208,13 +206,13 @@ Bert<T>::~Bert()
 }
 
 template<typename T>
-void Bert<T>::allocateBuffer()
+void Ernie<T>::allocateBuffer()
 {
     FT_CHECK(false);
 }
 
 template<typename T>
-void Bert<T>::allocateBuffer(size_t batch_size, size_t seq_len)
+void Ernie<T>::allocateBuffer(size_t batch_size, size_t seq_len)
 {
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     h_pinned_token_num_ptr_ = (size_t*)allocator_->reMalloc(h_pinned_token_num_ptr_, sizeof(size_t), true, true);
@@ -224,11 +222,11 @@ void Bert<T>::allocateBuffer(size_t batch_size, size_t seq_len)
 
     attention_mask_ = (T*)allocator_->reMalloc(attention_mask_, sizeof(T) * batch_size * seq_len * seq_len, false);
 
-    bert_in_buffer_ =
-        (T*)allocator_->reMalloc(bert_in_buffer_, sizeof(T) * batch_size * seq_len * head_num_ * size_per_head_, false);
+    ernie_in_buffer_ =
+        (T*)allocator_->reMalloc(ernie_in_buffer_, sizeof(T) * batch_size * seq_len * head_num_ * size_per_head_, false);
     attn_out_buf_    = (T*)allocator_->reMalloc(attn_out_buf_, sizeof(T) * batch_size * seq_len * hidden_units_, false);
-    bert_out_buffer_ = (T*)allocator_->reMalloc(
-        bert_out_buffer_, sizeof(T) * batch_size * seq_len * head_num_ * size_per_head_, false);
+    ernie_out_buffer_ = (T*)allocator_->reMalloc(
+        ernie_out_buffer_, sizeof(T) * batch_size * seq_len * head_num_ * size_per_head_, false);
 
     if (layernorm_type_ == LayerNormType::post_layernorm) {
         normed_from_tensor_  = nullptr;
@@ -244,7 +242,7 @@ void Bert<T>::allocateBuffer(size_t batch_size, size_t seq_len)
 }
 
 template<typename T>
-void Bert<T>::freeBuffer()
+void Ernie<T>::freeBuffer()
 {
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     if (is_allocate_buffer_) {
@@ -253,9 +251,9 @@ void Bert<T>::freeBuffer()
         allocator_->free((void**)(&trt_mha_padding_offset_));
 
         allocator_->free((void**)(&attention_mask_));
-        allocator_->free((void**)(&bert_in_buffer_));
+        allocator_->free((void**)(&ernie_in_buffer_));
         allocator_->free((void**)(&attn_out_buf_));
-        allocator_->free((void**)(&bert_out_buffer_));
+        allocator_->free((void**)(&ernie_out_buffer_));
 
         if (layernorm_type_ == LayerNormType::post_layernorm) {
             normed_from_tensor_  = nullptr;
@@ -270,7 +268,7 @@ void Bert<T>::freeBuffer()
 }
 
 template<typename T>
-bool Bert<T>::isValidLayerParallelId(uint l)
+bool Ernie<T>::isValidLayerParallelId(uint l)
 {
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     int local_num_layer = (int)(ceil(num_layer_ * 1.0f / pipeline_para_.world_size_));
@@ -279,7 +277,7 @@ bool Bert<T>::isValidLayerParallelId(uint l)
 }
 
 template<typename T>
-bool Bert<T>::isFirstLayerParallelId(uint l)
+bool Ernie<T>::isFirstLayerParallelId(uint l)
 {
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     int local_num_layer = (int)(ceil(num_layer_ * 1.0f / pipeline_para_.world_size_));
@@ -287,7 +285,7 @@ bool Bert<T>::isFirstLayerParallelId(uint l)
 }
 
 template<typename T>
-bool Bert<T>::isLastLayerParallelId(uint l)
+bool Ernie<T>::isLastLayerParallelId(uint l)
 {
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     int local_num_layer = (int)(ceil(num_layer_ * 1.0f / pipeline_para_.world_size_));
@@ -295,7 +293,7 @@ bool Bert<T>::isLastLayerParallelId(uint l)
 }
 
 template<typename T>
-int Bert<T>::getFirstLayerParallelId()
+int Ernie<T>::getFirstLayerParallelId()
 {
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     int local_num_layer = (int)(ceil(num_layer_ * 1.0f / pipeline_para_.world_size_));
@@ -303,18 +301,18 @@ int Bert<T>::getFirstLayerParallelId()
 }
 
 template<typename T>
-void Bert<T>::forward(std::vector<Tensor>*       output_tensors,
-                      const std::vector<Tensor>* input_tensors,
-                      const BertWeight<T>*       bert_weights)
+void Ernie<T>::forward(std::vector<Tensor>*       output_tensors,
+                       const std::vector<Tensor>* input_tensors,
+                       const ErnieWeight<T>*       ernie_weights)
 {
     TensorMap input_tensors_map =
         TensorMap({{"input_hidden_state", input_tensors->at(0)}, {"sequence_lengths", input_tensors->at(1)}});
     TensorMap output_tensors_map = TensorMap({{"output_hidden_state", output_tensors->at(0)}});
-    forward(&output_tensors_map, &input_tensors_map, bert_weights);
+    forward(&output_tensors_map, &input_tensors_map, ernie_weights);
 }
 
 template<typename T>
-void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const BertWeight<T>* bert_weights)
+void Ernie<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const ErnieWeight<T>* ernie_weights)
 {
     // input_tensors:
     //      input_hidden_state [batch, seqlen, hidden]
@@ -323,6 +321,7 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
     //      output_hidden_state [batch, seqlen, hidden]
 
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
+    
     const size_t request_batch_size = input_tensors->at("input_hidden_state").shape[0];
     const size_t request_seq_len    = input_tensors->at("input_hidden_state").shape[1];
     FT_CHECK(input_tensors->size() >= 2);
@@ -354,8 +353,8 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
         const size_t hidden_offset             = ite * local_batch_size * request_seq_len * hidden_units_;
         size_t       h_token_num               = 0;
 
-        T* bert_input_ptr;
-        T* bert_output_ptr;
+        T* erine_input_ptr;
+        T* erine_output_ptr;
 
         switch (attention_type) {
             case AttentionType::UNFUSED_MHA: {
@@ -375,7 +374,7 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
                     request_seq_len,
                     stream_);
 
-                invokeRemovePadding(bert_in_buffer_,
+                invokeRemovePadding(ernie_in_buffer_,
                                     input_tensors->at("input_hidden_state").getPtrWithOffset<T>(hidden_offset),
                                     padding_offset_,
                                     h_token_num,
@@ -385,8 +384,8 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
 
                 padding_offset_tensor_ptr =
                     new Tensor(MEMORY_GPU, TYPE_INT32, std::vector<size_t>{h_token_num}, padding_offset_);
-                bert_input_ptr  = bert_in_buffer_;
-                bert_output_ptr = bert_out_buffer_;
+                ernie_input_ptr  = ernie_in_buffer_;
+                ernie_output_ptr = ernie_out_buffer_;
                 sync_check_cuda_error();
                 break;
             }
@@ -399,8 +398,8 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
                     stream_);
                 sync_check_cuda_error();
                 h_token_num     = local_batch_size * request_seq_len;
-                bert_input_ptr  = input_tensors->at("input_hidden_state").getPtrWithOffset<T>(hidden_offset);
-                bert_output_ptr = output_tensors->at("output_hidden_state").getPtrWithOffset<T>(hidden_offset);
+                ernie_input_ptr  = input_tensors->at("input_hidden_state").getPtrWithOffset<T>(hidden_offset);
+                ernie_output_ptr = output_tensors->at("output_hidden_state").getPtrWithOffset<T>(hidden_offset);
                 padding_offset_tensor_ptr = new Tensor(MEMORY_GPU, TYPE_INT32, std::vector<size_t>{0}, nullptr);
                 sync_check_cuda_error();
                 break;
@@ -415,7 +414,7 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
                     request_seq_len,
                     stream_);
 
-                invokeRemovePadding(bert_in_buffer_,
+                invokeRemovePadding(ernie_in_buffer_,
                                     input_tensors->at("input_hidden_state").getPtrWithOffset<T>(hidden_offset),
                                     padding_offset_,
                                     h_token_num,
@@ -431,8 +430,8 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
 
                 padding_offset_tensor_ptr = new Tensor(
                     MEMORY_GPU, TYPE_INT32, std::vector<size_t>{local_batch_size + 1}, trt_mha_padding_offset_);
-                bert_input_ptr  = bert_in_buffer_;
-                bert_output_ptr = bert_out_buffer_;
+                ernie_input_ptr  = ernie_in_buffer_;
+                ernie_output_ptr = ernie_out_buffer_;
                 sync_check_cuda_error();
                 break;
             }
@@ -447,8 +446,8 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
                 sync_check_cuda_error();
                 padding_offset_tensor_ptr = new Tensor(
                     MEMORY_GPU, TYPE_INT32, std::vector<size_t>{local_batch_size * 2 + 1}, trt_mha_padding_offset_);
-                bert_input_ptr  = input_tensors->at("input_hidden_state").getPtrWithOffset<T>(hidden_offset);
-                bert_output_ptr = output_tensors->at("output_hidden_state").getPtrWithOffset<T>(hidden_offset);
+                ernie_input_ptr  = input_tensors->at("input_hidden_state").getPtrWithOffset<T>(hidden_offset);
+                ernie_output_ptr = output_tensors->at("output_hidden_state").getPtrWithOffset<T>(hidden_offset);
                 break;
             }
             default: {
@@ -460,8 +459,8 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
             if (isValidLayerParallelId(l) == false) {
                 continue;
             }
-            T* from_tensor = l == 0 ? bert_input_ptr : bert_output_ptr;
-            T* out_tensor  = bert_output_ptr;
+            T* from_tensor = l == 0 ? ernie_input_ptr : ernie_output_ptr;
+            T* out_tensor  = ernie_output_ptr;
 
             if (isFirstLayerParallelId(l) && pipeline_para_.rank_ != 0 && pipeline_para_.world_size_ > 1) {
                 ftNcclRecv(from_tensor + h_token_num * hidden_units_ / tensor_para_.world_size_ * tensor_para_.rank_,
@@ -481,8 +480,8 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
             if (layernorm_type_ == LayerNormType::pre_layernorm) {
                 invokeGeneralLayerNorm(normed_from_tensor_,
                                        from_tensor,
-                                       bert_weights->bert_layer_weights[l].attn_layernorm_weights.gamma,
-                                       bert_weights->bert_layer_weights[l].attn_layernorm_weights.beta,
+                                       ernie_weights->ernie_layer_weights[l].attn_layernorm_weights.gamma,
+                                       ernie_weights->ernie_layer_weights[l].attn_layernorm_weights.beta,
                                        layernorm_eps_,
                                        h_token_num,
                                        hidden_units_,
@@ -520,13 +519,13 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
                 if (attention_type == AttentionType::FUSED_MHA || attention_type == AttentionType::FUSED_PADDED_MHA) {
                     fused_attention_layer_->forward(&attn_output_tensors,
                                                     &attn_input_tensors,
-                                                    &bert_weights->bert_layer_weights[l].attention_weights);
+                                                    &ernie_weights->ernie_layer_weights[l].attention_weights);
                 }
                 else if (attention_type == AttentionType::UNFUSED_MHA
                          || attention_type == AttentionType::UNFUSED_PADDED_MHA) {
                     unfused_attention_layer_->forward(&attn_output_tensors,
                                                       &attn_input_tensors,
-                                                      &bert_weights->bert_layer_weights[l].attention_weights);
+                                                      &ernie_weights->ernie_layer_weights[l].attention_weights);
                 }
 
                 if (tensor_para_.world_size_ > 1) {
@@ -546,9 +545,9 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
                 invokeAddBiasResidualLayerNorm(
                     attn_out_buf_,
                     from_tensor,
-                    bert_weights->bert_layer_weights[l].attention_weights.attention_output_weight.bias,
-                    bert_weights->bert_layer_weights[l].attn_layernorm_weights.gamma,
-                    bert_weights->bert_layer_weights[l].attn_layernorm_weights.beta,
+                    ernie_weights->ernie_layer_weights[l].attention_weights.attention_output_weight.bias,
+                    ernie_weights->ernie_layer_weights[l].attn_layernorm_weights.gamma,
+                    ernie_weights->ernie_layer_weights[l].attn_layernorm_weights.beta,
                     layernorm_eps_,
                     h_token_num,
                     hidden_units_,
@@ -560,9 +559,9 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
                     normed_attn_out_buf_,
                     attn_out_buf_,
                     from_tensor,
-                    bert_weights->bert_layer_weights[l].ffn_layernorm_weights.gamma,
-                    bert_weights->bert_layer_weights[l].ffn_layernorm_weights.beta,
-                    bert_weights->bert_layer_weights[l].attention_weights.attention_output_weight.bias,
+                    ernie_weights->ernie_layer_weights[l].ffn_layernorm_weights.gamma,
+                    ernie_weights->ernie_layer_weights[l].ffn_layernorm_weights.beta,
+                    ernie_weights->ernie_layer_weights[l].attention_weights.attention_output_weight.bias,
                     layernorm_eps_,
                     h_token_num,
                     hidden_units_,
@@ -587,15 +586,15 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
                     {{"ffn_output",
                       Tensor{MEMORY_GPU, data_type, std::vector<size_t>{h_token_num, hidden_units_}, out_tensor}}});
                 ffn_layer_->forward(
-                    &ffn_output_tensors, &ffn_input_tensors, &bert_weights->bert_layer_weights[l].ffn_weights);
+                    &ffn_output_tensors, &ffn_input_tensors, &ernie_weights->ernie_layer_weights[l].ffn_weights);
             }
 
             if (layernorm_type_ == LayerNormType::post_layernorm) {
                 invokeAddBiasResidualLayerNorm(out_tensor,
                                                attn_out_buf_,
-                                               bert_weights->bert_layer_weights[l].ffn_weights.output_weight.bias,
-                                               bert_weights->bert_layer_weights[l].ffn_layernorm_weights.gamma,
-                                               bert_weights->bert_layer_weights[l].ffn_layernorm_weights.beta,
+                                               ernie_weights->ernie_layer_weights[l].ffn_weights.output_weight.bias,
+                                               ernie_weights->ernie_layer_weights[l].ffn_layernorm_weights.gamma,
+                                               ernie_weights->ernie_layer_weights[l].ffn_layernorm_weights.beta,
                                                layernorm_eps_,
                                                h_token_num,
                                                hidden_units_,
@@ -604,7 +603,7 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
             else if (layernorm_type_ == LayerNormType::pre_layernorm) {
                 invokeAddBiasResidual(out_tensor,
                                       attn_out_buf_,
-                                      bert_weights->bert_layer_weights[l].ffn_weights.output_weight.bias,
+                                      ernie_weights->ernie_layer_weights[l].ffn_weights.output_weight.bias,
                                       h_token_num,
                                       hidden_units_,
                                       stream_);
@@ -624,10 +623,10 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
 
         if (pipeline_para_.rank_ == pipeline_para_.world_size_ - 1) {
             if (layernorm_type_ == LayerNormType::pre_layernorm) {
-                invokeGeneralLayerNorm(bert_output_ptr,
-                                       bert_output_ptr,
-                                       bert_weights->post_transformer_layernorm_weights.gamma,
-                                       bert_weights->post_transformer_layernorm_weights.beta,
+                invokeGeneralLayerNorm(ernie_output_ptr,
+                                       ernie_output_ptr,
+                                       ernie_weights->post_transformer_layernorm_weights.gamma,
+                                       ernie_weights->post_transformer_layernorm_weights.beta,
                                        layernorm_eps_,
                                        h_token_num,
                                        hidden_units_,
@@ -641,7 +640,7 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
             switch (attention_type) {
                 case AttentionType::UNFUSED_MHA: {
                     invokeRebuildPadding(output_tensors->at("output_hidden_state").getPtrWithOffset<T>(hidden_offset),
-                                         bert_out_buffer_,
+                                         ernie_out_buffer_,
                                          padding_offset_,
                                          h_token_num,
                                          head_num_ * size_per_head_,
@@ -654,7 +653,7 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
                 }
                 case AttentionType::FUSED_MHA: {
                     invokeRebuildPadding(output_tensors->at("output_hidden_state").getPtrWithOffset<T>(hidden_offset),
-                                         bert_out_buffer_,
+                                         ernie_out_buffer_,
                                          padding_offset_,
                                          h_token_num,
                                          head_num_ * size_per_head_,
@@ -706,10 +705,10 @@ void Bert<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, const
     cudaStreamSynchronize(stream_);
 }
 
-template class Bert<float>;
-template class Bert<half>;
+template class Ernie<float>;
+template class Ernie<half>;
 #ifdef ENABLE_BF16
-template class Bert<__nv_bfloat16>;
+template class Ernie<__nv_bfloat16>;
 #endif
 
 }  // namespace fastertransformer

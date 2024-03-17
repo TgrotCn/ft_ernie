@@ -82,9 +82,9 @@ protected:
     int*    padding_offset_         = nullptr;
     int*    trt_mha_padding_offset_ = nullptr;
     T*      attention_mask_         = nullptr;
-    T*      Ernie_in_buffer_         = nullptr;
+    T*      ernie_in_buffer_         = nullptr;
     T*      attn_out_buf_           = nullptr;
-    T*      Ernie_out_buffer_        = nullptr;
+    T*      ernie_out_buffer_        = nullptr;
 
     T* normed_from_tensor_  = nullptr;
     T* normed_attn_out_buf_ = nullptr;
@@ -134,8 +134,8 @@ public:
 
     void forward(std::vector<Tensor>*       output_tensors,
                  const std::vector<Tensor>* input_tensors,
-                 const ErnieWeight<T>*       Ernie_weights);
-    void forward(TensorMap* output_tensors, TensorMap* input_tensors, const ErnieWeight<T>* Ernie_weights);
+                 const ErnieWeight<T>*       ernie_weights);
+    void forward(TensorMap* output_tensors, TensorMap* input_tensors, const ErnieWeight<T>* ernie_weights);
 };
 
 }  // namespace fastertransformer
